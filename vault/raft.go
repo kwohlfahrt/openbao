@@ -1068,11 +1068,12 @@ func (c *Core) JoinRaftCluster(ctx context.Context, leaderInfos []*raft.LeaderJo
 
 // raftLeaderInfo uses go-discover to expand leaderInfo to include any auto-join results
 func (c *Core) raftLeaderInfo(leaderInfo *raft.LeaderJoinInfo, disco *discover.Discover) ([]*raft.LeaderJoinInfo, error) {
+	if err := leaderInfo.ValidateJoinMethods(); err != nil {
+		return nil, err
+	}
+
 	var ret []*raft.LeaderJoinInfo
 	switch {
-	case leaderInfo.LeaderAPIAddr != "" && leaderInfo.AutoJoin != "":
-		return nil, errors.New("cannot provide both leader address and auto-join metadata")
-
 	case leaderInfo.LeaderAPIAddr != "":
 		ret = append(ret, leaderInfo)
 
@@ -1102,7 +1103,7 @@ func (c *Core) raftLeaderInfo(leaderInfo *raft.LeaderJoinInfo, disco *discover.D
 			info.LeaderAPIAddr = u
 			ret = append(ret, &info)
 		}
-
+	case leaderInfo.AutoJoinPlugin != nil:
 	default:
 		return nil, errors.New("must provide leader address or auto-join metadata")
 	}
