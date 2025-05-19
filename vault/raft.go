@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"os/exec"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -20,12 +21,14 @@ import (
 	"github.com/hashicorp/go-discover"
 	discoverk8s "github.com/hashicorp/go-discover/provider/k8s"
 	"github.com/hashicorp/go-hclog"
+	"github.com/hashicorp/go-plugin"
 	"github.com/hashicorp/go-secure-stdlib/tlsutil"
 	"github.com/hashicorp/go-uuid"
 	"github.com/mitchellh/mapstructure"
 	wrapping "github.com/openbao/go-kms-wrapping/v2"
 	"github.com/openbao/openbao/api/v2"
 	"github.com/openbao/openbao/physical/raft"
+	"github.com/openbao/openbao/plugins/join"
 	"github.com/openbao/openbao/sdk/v2/helper/jsonutil"
 	"github.com/openbao/openbao/sdk/v2/logical"
 	"github.com/openbao/openbao/vault/seal"
@@ -1104,6 +1107,36 @@ func (c *Core) raftLeaderInfo(leaderInfo *raft.LeaderJoinInfo, disco *discover.D
 			ret = append(ret, &info)
 		}
 	case leaderInfo.AutoJoinPlugin != nil:
+		client := plugin.NewClient(&plugin.ClientConfig{
+			// TODO: Define in only one place
+			HandshakeConfig: plugin.HandshakeConfig{
+				MagicCookieKey:   "BAO_DISCOVER_PLUGIN",
+				MagicCookieValue: "placeholder",
+			},
+			Plugins:          map[string]plugin.Plugin{"discover": join.JoinPlugin{}},
+			Cmd:              exec.Command(""), // TODO
+			AllowedProtocols: []plugin.Protocol{plugin.ProtocolGRPC},
+		})
+		defer client.Kill()
+		rpcClient, err := client.Client()
+		if err != nil {
+			return nil, err
+		}
+		raw, err := rpcClient.Dispense("discover")
+		if err != nil {
+			return nil, err
+		}
+		joinClient := raw.(join.Join)
+		candidates, err := joinClient.Candidates(leaderInfo.AutoJoinPlugin.Config)
+		if err != nil {
+			return nil, err
+		}
+		for _, candidate := range candidates {
+			u := fmt.Sprintf("%s://%s:%d", candidate.Scheme, candidate.Host, candidate.Port)
+			info := *leaderInfo
+			info.LeaderAPIAddr = u
+			ret = append(ret, &info)
+		}
 	default:
 		return nil, errors.New("must provide leader address or auto-join metadata")
 	}
