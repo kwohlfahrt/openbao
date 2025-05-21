@@ -67,10 +67,7 @@ func Run() error {
 		return err
 	}
 	plugin.Serve(&plugin.ServeConfig{
-		HandshakeConfig: plugin.HandshakeConfig{
-			MagicCookieKey:   "BAO_DISCOVER_PLUGIN",
-			MagicCookieValue: "placeholder",
-		},
+		HandshakeConfig: joinPlugin.HandshakeConfig,
 		Plugins: map[string]plugin.Plugin{
 			"discover": joinPlugin.JoinPlugin{Impl: &Discover{disco: disco}},
 		},

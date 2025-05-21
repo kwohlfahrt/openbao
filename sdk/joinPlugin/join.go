@@ -34,6 +34,11 @@ type GRPCServer struct {
 	Impl Join
 }
 
+var HandshakeConfig = plugin.HandshakeConfig{
+	MagicCookieKey:   "BAO_JOIN_PLUGIN",
+	MagicCookieValue: "f4204b06-eb34-4f02-8564-a8ba687343a3",
+}
+
 func (g *GRPCServer) Candidates(ctx context.Context, args *pb.CandidateArgs) (*pb.Candidates, error) {
 	// TODO: Should Candidates() return []*pb.Candidate directly?
 	v, err := g.Impl.Candidates(args.Config)

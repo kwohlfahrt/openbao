@@ -1108,11 +1108,7 @@ func (c *Core) raftLeaderInfo(leaderInfo *raft.LeaderJoinInfo, disco *discover.D
 		}
 	case leaderInfo.AutoJoinPlugin != nil:
 		client := plugin.NewClient(&plugin.ClientConfig{
-			// TODO: Define in only one place
-			HandshakeConfig: plugin.HandshakeConfig{
-				MagicCookieKey:   "BAO_DISCOVER_PLUGIN",
-				MagicCookieValue: "placeholder",
-			},
+			HandshakeConfig:  joinPlugin.HandshakeConfig,
 			Plugins:          map[string]plugin.Plugin{"discover": joinPlugin.JoinPlugin{}},
 			Cmd:              exec.Command(""), // TODO
 			AllowedProtocols: []plugin.Protocol{plugin.ProtocolGRPC},
