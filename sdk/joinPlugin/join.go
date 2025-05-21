@@ -1,10 +1,10 @@
-package join
+package joinPlugin
 
 import (
 	"context"
 
 	"github.com/hashicorp/go-plugin"
-	"github.com/openbao/openbao/plugins/join/pb"
+	"github.com/openbao/openbao/sdk/v2/joinPlugin/pb"
 	"google.golang.org/grpc"
 )
 

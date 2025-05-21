@@ -28,8 +28,8 @@ import (
 	wrapping "github.com/openbao/go-kms-wrapping/v2"
 	"github.com/openbao/openbao/api/v2"
 	"github.com/openbao/openbao/physical/raft"
-	"github.com/openbao/openbao/plugins/join"
 	"github.com/openbao/openbao/sdk/v2/helper/jsonutil"
+	"github.com/openbao/openbao/sdk/v2/joinPlugin"
 	"github.com/openbao/openbao/sdk/v2/logical"
 	"github.com/openbao/openbao/vault/seal"
 	"golang.org/x/net/http2"
@@ -1113,7 +1113,7 @@ func (c *Core) raftLeaderInfo(leaderInfo *raft.LeaderJoinInfo, disco *discover.D
 				MagicCookieKey:   "BAO_DISCOVER_PLUGIN",
 				MagicCookieValue: "placeholder",
 			},
-			Plugins:          map[string]plugin.Plugin{"discover": join.JoinPlugin{}},
+			Plugins:          map[string]plugin.Plugin{"discover": joinPlugin.JoinPlugin{}},
 			Cmd:              exec.Command(""), // TODO
 			AllowedProtocols: []plugin.Protocol{plugin.ProtocolGRPC},
 		})
@@ -1126,7 +1126,7 @@ func (c *Core) raftLeaderInfo(leaderInfo *raft.LeaderJoinInfo, disco *discover.D
 		if err != nil {
 			return nil, err
 		}
-		joinClient := raw.(join.Join)
+		joinClient := raw.(joinPlugin.Join)
 		candidates, err := joinClient.Candidates(leaderInfo.AutoJoinPlugin.Config)
 		if err != nil {
 			return nil, err

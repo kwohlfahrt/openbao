@@ -9,7 +9,7 @@ import (
 	"github.com/hashicorp/go-discover"
 	"github.com/hashicorp/go-discover/provider/k8s"
 	"github.com/hashicorp/go-plugin"
-	"github.com/openbao/openbao/plugins/join"
+	"github.com/openbao/openbao/sdk/v2/joinPlugin"
 )
 
 func newDiscover() (*discover.Discover, error) {
@@ -25,7 +25,7 @@ type Discover struct {
 	disco *discover.Discover
 }
 
-func (d *Discover) Candidates(config map[string]string) ([]join.Addr, error) {
+func (d *Discover) Candidates(config map[string]string) ([]joinPlugin.Addr, error) {
 	args, found := config["discover"]
 	if !found {
 		return nil, fmt.Errorf("`discover` string must be provided")
@@ -49,13 +49,13 @@ func (d *Discover) Candidates(config map[string]string) ([]join.Addr, error) {
 		return nil, err
 	}
 
-	addrs := make([]join.Addr, len(ips))
+	addrs := make([]joinPlugin.Addr, len(ips))
 	for _, ip := range ips {
 		if strings.Count(ip, ":") >= 2 && !strings.HasPrefix(ip, "[") {
 			// An IPv6 address in implicit form, however we need it in explicit form to use in a URL.
 			ip = fmt.Sprintf("[%s]", ip)
 		}
-		addrs = append(addrs, join.Addr{Scheme: scheme, Host: ip, Port: uint16(port)})
+		addrs = append(addrs, joinPlugin.Addr{Scheme: scheme, Host: ip, Port: uint16(port)})
 	}
 
 	return addrs, nil
@@ -72,7 +72,7 @@ func Run() error {
 			MagicCookieValue: "placeholder",
 		},
 		Plugins: map[string]plugin.Plugin{
-			"discover": join.JoinPlugin{Impl: &Discover{disco: disco}},
+			"discover": joinPlugin.JoinPlugin{Impl: &Discover{disco: disco}},
 		},
 		GRPCServer: plugin.DefaultGRPCServer,
 	})
