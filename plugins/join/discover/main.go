@@ -8,6 +8,7 @@ import (
 
 	"github.com/hashicorp/go-discover"
 	"github.com/hashicorp/go-discover/provider/k8s"
+	"github.com/hashicorp/go-hclog"
 	"github.com/hashicorp/go-plugin"
 	"github.com/openbao/openbao/sdk/v2/joinPlugin"
 )
@@ -22,7 +23,8 @@ func newDiscover() (*discover.Discover, error) {
 }
 
 type Discover struct {
-	disco *discover.Discover
+	logger hclog.Logger
+	disco  *discover.Discover
 }
 
 func (d *Discover) Candidates(config map[string]string) ([]joinPlugin.Addr, error) {
@@ -44,7 +46,7 @@ func (d *Discover) Candidates(config map[string]string) ([]joinPlugin.Addr, erro
 		scheme = "https"
 	}
 
-	ips, err := d.disco.Addrs(args, nil) // TODO: logging
+	ips, err := d.disco.Addrs(args, d.logger.StandardLogger(nil))
 	if err != nil {
 		return nil, err
 	}
@@ -61,7 +63,7 @@ func (d *Discover) Candidates(config map[string]string) ([]joinPlugin.Addr, erro
 	return addrs, nil
 }
 
-func Run() error {
+func Run(logger hclog.Logger) error {
 	disco, err := newDiscover()
 	if err != nil {
 		return err
@@ -69,7 +71,12 @@ func Run() error {
 	plugin.Serve(&plugin.ServeConfig{
 		HandshakeConfig: joinPlugin.HandshakeConfig,
 		Plugins: map[string]plugin.Plugin{
-			"discover": joinPlugin.JoinPlugin{Impl: &Discover{disco: disco}},
+			"discover": joinPlugin.JoinPlugin{
+				Impl: &Discover{
+					logger: logger,
+					disco:  disco,
+				},
+			},
 		},
 		GRPCServer: plugin.DefaultGRPCServer,
 	})
@@ -77,8 +84,11 @@ func Run() error {
 }
 
 func main() {
-	err := Run()
+	logger := hclog.Default()
+
+	err := Run(logger)
 	if err != nil {
+		logger.Error(err.Error())
 		os.Exit(1)
 	}
 }
