@@ -13,6 +13,7 @@ import (
 	"github.com/hashicorp/go-hclog"
 	wrapping "github.com/openbao/go-kms-wrapping/v2"
 	"github.com/openbao/openbao/command/server"
+	"github.com/openbao/openbao/sdk/v2/helper/consts"
 	"github.com/stretchr/testify/require"
 )
 
@@ -25,7 +26,7 @@ func TestConfigureWrapper(t *testing.T) {
 	catalog, err := NewCatalog(logger, &server.Config{
 		PluginDirectory: filepath.Dir(os.Args[0]),
 		Plugins:         []*server.PluginConfig{testPluginConfig(t)},
-	})
+	}, consts.PluginTypeKMS)
 	require.NoError(t, err, "catalog should create successfully")
 
 	w1, config, err := catalog.ConfigureWrapper(ctx, "static")
@@ -88,7 +89,7 @@ func TestReloadWrapper(t *testing.T) {
 	catalog, err := NewCatalog(logger, &server.Config{
 		PluginDirectory: filepath.Dir(os.Args[0]),
 		Plugins:         []*server.PluginConfig{testPluginConfig(t)},
-	})
+	}, consts.PluginTypeKMS)
 	require.NoError(t, err, "catalog should create successfully")
 
 	plaintext := []byte("foo")
@@ -136,7 +137,7 @@ func TestBuiltinWrapper(t *testing.T) {
 	ctx := t.Context()
 	logger := hclog.Default()
 
-	catalog, err := NewCatalog(logger, &server.Config{})
+	catalog, err := NewCatalog(logger, &server.Config{}, consts.PluginTypeKMS)
 	require.NoError(t, err, "catalog should create successfully")
 
 	key := make([]byte, 32)

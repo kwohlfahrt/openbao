@@ -419,7 +419,7 @@ func (c *ServerCommand) runRecoveryMode() int {
 		return 1
 	}
 
-	kms, err := kmsplugin.NewCatalog(c.logger, config)
+	kms, err := kmsplugin.NewCatalog(c.logger, config, consts.PluginTypeKMS)
 	if err != nil {
 		c.UI.Error(fmt.Sprintf("Error creating KMS plugin catalog: %s", err))
 		return 1
@@ -1020,7 +1020,7 @@ func (c *ServerCommand) Run(args []string) int {
 		return 1
 	}
 
-	kms, err := kmsplugin.NewCatalog(c.logger, config)
+	kms, err := kmsplugin.NewCatalog(c.logger, config, consts.PluginTypeKMS)
 	if err != nil {
 		c.UI.Error(fmt.Sprintf("Error creating KMS plugin catalog: %s", err))
 		return 1

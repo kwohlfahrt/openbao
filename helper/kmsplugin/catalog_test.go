@@ -66,7 +66,7 @@ func TestGetClient(t *testing.T) {
 			// This one should be ignored as it is a secrets engine plugin.
 			{Type: consts.PluginTypeSecrets.String(), Name: "foo"},
 		},
-	})
+	}, consts.PluginTypeKMS)
 	require.NoError(t, err, "catalog should create successfully")
 	require.Len(t, catalog.plugins, 1, "should have registered one plugin")
 	require.Len(t, catalog.clients, 0, "should have no active plugin clients")
@@ -102,7 +102,7 @@ func TestReloadClient(t *testing.T) {
 	catalog, err := NewCatalog(logger, &server.Config{
 		PluginDirectory: filepath.Dir(os.Args[0]),
 		Plugins:         []*server.PluginConfig{testPluginConfig(t)},
-	})
+	}, consts.PluginTypeKMS)
 	require.NoError(t, err, "catalog should create successfully")
 
 	client1, ok, err := catalog.getClient("static")
@@ -163,7 +163,7 @@ func TestBadClientConfig(t *testing.T) {
 
 	for name, config := range tests {
 		t.Run(name, func(t *testing.T) {
-			catalog, err := NewCatalog(logger, config)
+			catalog, err := NewCatalog(logger, config, consts.PluginTypeKMS)
 			require.NoError(t, err, "catalog should create successfully")
 
 			client, ok, err := catalog.getClient("static")

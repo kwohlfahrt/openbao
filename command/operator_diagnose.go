@@ -27,6 +27,7 @@ import (
 	"github.com/openbao/openbao/helper/listenerutil"
 	"github.com/openbao/openbao/helper/metricsutil"
 	"github.com/openbao/openbao/physical/raft"
+	"github.com/openbao/openbao/sdk/v2/helper/consts"
 	"github.com/openbao/openbao/sdk/v2/physical"
 	sr "github.com/openbao/openbao/serviceregistration"
 	"github.com/openbao/openbao/vault"
@@ -278,7 +279,7 @@ func (c *OperatorDiagnoseCommand) offlineDiagnostics(ctx context.Context) error 
 
 	var kms *kmsplugin.Catalog
 	_ = diagnose.Test(ctx, "Check KMS Plugin Catalog", func(context.Context) (err error) {
-		kms, err = kmsplugin.NewCatalog(server.logger, config)
+		kms, err = kmsplugin.NewCatalog(server.logger, config, consts.PluginTypeKMS)
 		return err
 	})
 

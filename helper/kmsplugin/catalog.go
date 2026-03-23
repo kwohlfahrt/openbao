@@ -42,7 +42,7 @@ type Catalog struct {
 }
 
 // NewCatalog returns a new KMS plugin catalog.
-func NewCatalog(logger hclog.Logger, config *server.Config) (*Catalog, error) {
+func NewCatalog(logger hclog.Logger, config *server.Config, pluginType consts.PluginType) (*Catalog, error) {
 	pluginDirectory := config.PluginDirectory
 	if pluginDirectory != "" {
 		var err error
@@ -61,7 +61,7 @@ func NewCatalog(logger hclog.Logger, config *server.Config) (*Catalog, error) {
 	plugins := make(map[string]*server.PluginConfig)
 	for _, plugin := range config.Plugins {
 		// Ignore plugins that aren't type KMS.
-		if typ, _ := consts.ParsePluginType(plugin.Type); typ != consts.PluginTypeKMS {
+		if typ, _ := consts.ParsePluginType(plugin.Type); typ != pluginType {
 			continue
 		}
 		// For now, KMS plugins only support one version at a time.
@@ -72,7 +72,7 @@ func NewCatalog(logger hclog.Logger, config *server.Config) (*Catalog, error) {
 	}
 
 	return &Catalog{
-		logger:                logger.Named("kms"),
+		logger:                logger.Named(pluginType.String()),
 		plugins:               plugins,
 		clients:               make(map[string]*client, len(plugins)),
 		pluginDirectory:       pluginDirectory,
