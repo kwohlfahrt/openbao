@@ -1,7 +1,7 @@
 // Copyright (c) 2026 OpenBao a Series of LF Projects, LLC
 // SPDX-License-Identifier: MPL-2.0
 
-package kmsplugin
+package catalog
 
 import (
 	"crypto/sha256"
@@ -23,17 +23,23 @@ import (
 	"github.com/openbao/openbao/sdk/v2/helper/consts"
 )
 
+type Constructor[T interface{}] func(interface{}) (*T, error)
+type Builtins[T interface{}] map[string]func() (*T, error)
+
 // Catalog manages dispatches to builtin and external KMS plugins and manages
 // their processes & connections. This is disjoint from the "main" plugin
 // catalog in core as KMS plugins may need to be instantiated before core is
 // created. Additionally, we get to simplify many things as KMS plugins are
 // declarative only.
-type Catalog struct {
+type Catalog[T interface{}] struct {
 	logger hclog.Logger
 
-	mu      sync.Mutex
-	plugins map[string]*server.PluginConfig
-	clients map[string]*client
+	mu          sync.Mutex
+	plugins     map[string]*server.PluginConfig
+	clients     map[string]*Client
+	builtins    Builtins[T]
+	constructor Constructor[T]
+	pluginType  consts.PluginType
 
 	// Derived from server configuration.
 	pluginDirectory       string
@@ -41,8 +47,23 @@ type Catalog struct {
 	pluginFilePermissions int
 }
 
+// The interfaces of the Catalog required by the client, exists so that the
+// Client doesn't need to be generic.
+type clientCatalog interface {
+	lock()
+	unlock()
+
+	removeClientLocked(client *Client)
+}
+
 // NewCatalog returns a new KMS plugin catalog.
-func NewCatalog(logger hclog.Logger, config *server.Config, pluginType consts.PluginType) (*Catalog, error) {
+func NewCatalog[T interface{}](
+	logger hclog.Logger,
+	config *server.Config,
+	pluginType consts.PluginType,
+	builtins Builtins[T],
+	constructor Constructor[T],
+) (*Catalog[T], error) {
 	pluginDirectory := config.PluginDirectory
 	if pluginDirectory != "" {
 		var err error
@@ -71,24 +92,64 @@ func NewCatalog(logger hclog.Logger, config *server.Config, pluginType consts.Pl
 		plugins[plugin.Name] = plugin
 	}
 
-	return &Catalog{
+	return &Catalog[T]{
 		logger:                logger.Named(pluginType.String()),
 		plugins:               plugins,
-		clients:               make(map[string]*client, len(plugins)),
+		clients:               make(map[string]*Client, len(plugins)),
+		builtins:              builtins,
+		pluginType:            pluginType,
+		constructor:           constructor,
 		pluginDirectory:       pluginDirectory,
 		pluginFileUid:         config.PluginFileUid,
 		pluginFilePermissions: config.PluginFilePermissions,
 	}, nil
 }
 
-func (c *Catalog) getClient(name string) (*client, bool, error) {
+func (c *Catalog[T]) GetPlugin(name string) (*T, bool, error) {
+	client, ok, err := c.getClient(name)
+	if err != nil {
+		return nil, false, err
+	}
+	if !ok {
+		if factory, ok := c.builtins[name]; ok {
+			p, err := factory()
+			return p, true, err
+		}
+		return nil, false, fmt.Errorf("unknown %s plugin: %s", c.pluginType.String(), name)
+	}
+
+	raw, err := client.Dispense("TODO")
+	if err != nil {
+		client.Close()
+		return nil, false, err
+	}
+
+	plugin, err := c.constructor(raw)
+	return plugin, false, err
+}
+
+func (c *Catalog[T]) lock() {
 	c.mu.Lock()
-	defer c.mu.Unlock()
+}
+
+func (c *Catalog[T]) unlock() {
+	c.mu.Unlock()
+}
+
+func (c *Catalog[T]) removeClientLocked(client *Client) {
+	if stored, ok := c.clients[client.name]; ok && stored == client {
+		delete(c.clients, client.name)
+	}
+}
+
+func (c *Catalog[T]) getClient(name string) (*Client, bool, error) {
+	c.lock()
+	defer c.unlock()
 
 	return c.getClientLocked(name)
 }
 
-func (c *Catalog) getClientLocked(name string) (*client, bool, error) {
+func (c *Catalog[T]) getClientLocked(name string) (*Client, bool, error) {
 	// Try to reuse an existing client.
 	if cl, ok := c.clients[name]; ok {
 		cl.refs++
@@ -139,7 +200,7 @@ func (c *Catalog) getClientLocked(name string) (*client, bool, error) {
 		return nil, true, fmt.Errorf("start plugin client: %w", err)
 	}
 
-	cl := &client{
+	cl := &Client{
 		catalog:        c,
 		name:           name,
 		refs:           1,
@@ -150,9 +211,9 @@ func (c *Catalog) getClientLocked(name string) (*client, bool, error) {
 	return cl, true, nil
 }
 
-func (c *Catalog) reloadClient(prev *client) (*client, error) {
-	c.mu.Lock()
-	defer c.mu.Unlock()
+func (c *Catalog[T]) reloadClient(prev *Client) (*Client, error) {
+	c.lock()
+	defer c.unlock()
 
 	client, ok, err := c.getClientLocked(prev.name)
 	switch {
@@ -186,7 +247,7 @@ func (c *Catalog) reloadClient(prev *client) (*client, error) {
 
 // checkFilePath mirrors path & permission checks performed by the core plugin
 // catalog.
-func (c *Catalog) checkFilePath(plugin *server.PluginConfig) error {
+func (c *Catalog[T]) checkFilePath(plugin *server.PluginConfig) error {
 	// Best effort check to make sure the command isn't breaking out of the
 	// configured plugin directory.
 	path, err := filepath.EvalSymlinks(filepath.Join(c.pluginDirectory, plugin.CommandPath()))
@@ -220,8 +281,8 @@ func (c *Catalog) checkFilePath(plugin *server.PluginConfig) error {
 	return nil
 }
 
-type client struct {
-	catalog *Catalog
+type Client struct {
+	catalog clientCatalog
 
 	name string // Name of the plugin.
 	refs int    // Reference count.
@@ -232,9 +293,9 @@ type client struct {
 
 // close decrements the client's reference count and kills it if the reference
 // count reaches zero.
-func (c *client) close() {
-	c.catalog.mu.Lock()
-	defer c.catalog.mu.Unlock()
+func (c *Client) Close() {
+	c.catalog.lock()
+	defer c.catalog.unlock()
 
 	if c.refs == 0 {
 		panic("kmsplugin: tried to close client more than once")
@@ -250,7 +311,5 @@ func (c *client) close() {
 	c.process.Kill()
 
 	// Remove from lookup if this is still the most recent client.
-	if stored, ok := c.catalog.clients[c.name]; ok && stored == c {
-		delete(c.catalog.clients, c.name)
-	}
+	c.catalog.removeClientLocked(c)
 }

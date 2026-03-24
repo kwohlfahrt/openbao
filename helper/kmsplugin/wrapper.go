@@ -19,6 +19,7 @@ import (
 	"github.com/openbao/go-kms-wrapping/wrappers/ocikms/v2"
 	"github.com/openbao/go-kms-wrapping/wrappers/static/v2"
 	"github.com/openbao/go-kms-wrapping/wrappers/transit/v2"
+	"github.com/openbao/openbao/helper/pluginutil/catalog"
 )
 
 var builtinWrappers = map[wrapping.WrapperType]wrapperFactory{
@@ -59,8 +60,13 @@ func toWrapper[T wrapping.Wrapper](f func() T) wrapperFactory {
 // ConfigureWrapper creates a new wrapper instance and calls SetConfig with
 // the provided options. This may dispatch to either a builtin wrapper or an
 // external pluginized wrapper.
-func (c *Catalog) ConfigureWrapper(ctx context.Context, name string, opts ...wrapping.Option) (wrapping.Wrapper, *wrapping.WrapperConfig, error) {
-	w, builtin, err := c.getWrapper(name)
+func ConfigureWrapper(
+	ctx context.Context,
+	c catalog.Catalog[wrapping.Wrapper],
+	name string,
+	opts ...wrapping.Option,
+) (wrapping.Wrapper, *wrapping.WrapperConfig, error) {
+	w, builtin, err := getWrapper(c, name)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -91,7 +97,7 @@ func (c *Catalog) ConfigureWrapper(ctx context.Context, name string, opts ...wra
 // getWrapper returns a new wrapping.Wrapper that is either builtin or
 // pluginized, in which case a new plugin process may be spawned. The
 // additionally returned bool is true if the returned wrapper is built-in.
-func (c *Catalog) getWrapper(name string) (wrapping.Wrapper, bool, error) {
+func getWrapper(c catalog.Catalog[wrapping.Wrapper], name string) (wrapping.Wrapper, bool, error) {
 	client, ok, err := c.getClient(name)
 	switch {
 	case err != nil:
@@ -123,7 +129,7 @@ func (c *Catalog) getWrapper(name string) (wrapping.Wrapper, bool, error) {
 type wrapper struct {
 	mu sync.RWMutex
 
-	client  *client
+	client  *catalog.Client
 	wrapper wrapperInitFinalizer
 
 	configOpts, initOpts []wrapping.Option

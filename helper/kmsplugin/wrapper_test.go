@@ -13,6 +13,7 @@ import (
 	"github.com/hashicorp/go-hclog"
 	wrapping "github.com/openbao/go-kms-wrapping/v2"
 	"github.com/openbao/openbao/command/server"
+	"github.com/openbao/openbao/helper/pluginutil/catalog"
 	"github.com/openbao/openbao/sdk/v2/helper/consts"
 	"github.com/stretchr/testify/require"
 )
@@ -23,7 +24,7 @@ func TestConfigureWrapper(t *testing.T) {
 	ctx := t.Context()
 	logger := hclog.Default()
 
-	catalog, err := NewCatalog(logger, &server.Config{
+	catalog, err := catalog.NewCatalog(logger, &server.Config{
 		PluginDirectory: filepath.Dir(os.Args[0]),
 		Plugins:         []*server.PluginConfig{testPluginConfig(t)},
 	}, consts.PluginTypeKMS)
