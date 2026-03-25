@@ -6,7 +6,6 @@ package kmsplugin
 import (
 	"context"
 	"errors"
-	"fmt"
 	"sync"
 
 	gkwplugin "github.com/openbao/go-kms-wrapping/plugin/v2"
@@ -60,13 +59,13 @@ func toWrapper[T wrapping.Wrapper](f func() T) wrapperFactory {
 // ConfigureWrapper creates a new wrapper instance and calls SetConfig with
 // the provided options. This may dispatch to either a builtin wrapper or an
 // external pluginized wrapper.
-func ConfigureWrapper(
+func ConfigureWrapper[W wrapping.Wrapper](
 	ctx context.Context,
-	c catalog.Catalog[wrapping.Wrapper],
+	c *catalog.Catalog[W],
 	name string,
 	opts ...wrapping.Option,
 ) (wrapping.Wrapper, *wrapping.WrapperConfig, error) {
-	w, builtin, err := getWrapper(c, name)
+	w, builtin, err := c.GetPlugin(name)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -76,7 +75,7 @@ func ConfigureWrapper(
 		// If we fail to configure the wrapper, ensure any underlying client is
 		// closed to avoid leaking it.
 		if w, ok := w.(*wrapper); ok {
-			w.client.close()
+			w.client.Close()
 		}
 		return nil, nil, err
 	}
@@ -92,36 +91,6 @@ func ConfigureWrapper(
 	}
 
 	return w, config, nil
-}
-
-// getWrapper returns a new wrapping.Wrapper that is either builtin or
-// pluginized, in which case a new plugin process may be spawned. The
-// additionally returned bool is true if the returned wrapper is built-in.
-func getWrapper(c catalog.Catalog[wrapping.Wrapper], name string) (wrapping.Wrapper, bool, error) {
-	client, ok, err := c.getClient(name)
-	switch {
-	case err != nil:
-		return nil, false, err
-	case !ok:
-		// Try builtin wrappers.
-		if factory, ok := builtinWrappers[wrapping.WrapperType(name)]; ok {
-			w, err := factory()
-			return w, true, err
-		}
-		return nil, false, fmt.Errorf("unknown wrapper: %s", name)
-	}
-
-	// Each call to Dispense creates a new wrapper instance on the remote.
-	raw, err := client.Dispense("wrapper")
-	if err != nil {
-		client.close()
-		return nil, false, err
-	}
-
-	return &wrapper{
-		client:  client,
-		wrapper: raw.(wrapperInitFinalizer),
-	}, false, nil
 }
 
 // wrapper adds plugin reloading & finalization hooks on top of a pluginized
@@ -157,7 +126,7 @@ func (w *wrapper) retry(ctx context.Context, f func() error) error {
 
 // call is a helper to call f under a read lock and return the current client
 // pointer as a reload canary value.
-func (w *wrapper) call(f func() error) (*client, error) {
+func (w *wrapper) call(f func() error) (*catalog.Client, error) {
 	w.mu.RLock()
 	defer w.mu.RUnlock()
 
@@ -170,7 +139,7 @@ func (w *wrapper) call(f func() error) (*client, error) {
 
 // reload attempts to reload the underlying external plugin and reinstantiate
 // the remote wrapper instance.
-func (w *wrapper) reload(ctx context.Context, canary *client) error {
+func (w *wrapper) reload(ctx context.Context, canary *catalog.Client) error {
 	w.mu.Lock()
 	defer w.mu.Unlock()
 
@@ -251,7 +220,7 @@ func (w *wrapper) Finalize(ctx context.Context, opts ...wrapping.Option) error {
 	defer w.mu.Unlock()
 
 	defer func() {
-		w.client.close()
+		w.client.Close()
 		// As a safety measure, set the client to nil to ensure the wrapper does
 		// not reload & replay itself if any of its APIs are called after this
 		// call to Finalize.

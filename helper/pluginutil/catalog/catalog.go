@@ -23,15 +23,15 @@ import (
 	"github.com/openbao/openbao/sdk/v2/helper/consts"
 )
 
-type Constructor[T interface{}] func(interface{}) (*T, error)
-type Builtins[T interface{}] map[string]func() (*T, error)
+type Constructor[T any] func(any) (T, error)
+type Builtins[T any] map[string]func() (T, error)
 
 // Catalog manages dispatches to builtin and external KMS plugins and manages
 // their processes & connections. This is disjoint from the "main" plugin
 // catalog in core as KMS plugins may need to be instantiated before core is
 // created. Additionally, we get to simplify many things as KMS plugins are
 // declarative only.
-type Catalog[T interface{}] struct {
+type Catalog[T any] struct {
 	logger hclog.Logger
 
 	mu          sync.Mutex
@@ -57,7 +57,7 @@ type clientCatalog interface {
 }
 
 // NewCatalog returns a new KMS plugin catalog.
-func NewCatalog[T interface{}](
+func NewCatalog[T any](
 	logger hclog.Logger,
 	config *server.Config,
 	pluginType consts.PluginType,
@@ -105,7 +105,10 @@ func NewCatalog[T interface{}](
 	}, nil
 }
 
-func (c *Catalog[T]) GetPlugin(name string) (*T, bool, error) {
+// GetPlugin returns a new plugin that is either builtin or pluginized, in which
+// case a new plugin process may be spawned. The additionally returned bool is
+// true if the returned wrapper is built-in.
+func (c *Catalog[T]) GetPlugin(name string) (T, bool, error) {
 	client, ok, err := c.getClient(name)
 	if err != nil {
 		return nil, false, err
